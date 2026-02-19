@@ -71,6 +71,17 @@ export const useUiStore = defineStore('ui', () => {
     logPanelTunnelId.value = null
   }
 
+  // SSH command import modal
+  const showSshImport = ref(false)
+
+  function openSshImport() {
+    showSshImport.value = true
+  }
+
+  function closeSshImport() {
+    showSshImport.value = false
+  }
+
   return {
     darkMode,
     toggleDarkMode,
@@ -89,5 +100,8 @@ export const useUiStore = defineStore('ui', () => {
     logPanelTunnelId,
     openLogPanel,
     closeLogPanel,
+    showSshImport,
+    openSshImport,
+    closeSshImport,
   }
 })

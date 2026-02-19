@@ -4,6 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::config_store;
 use crate::models::*;
+use crate::ssh_command_parser;
 use crate::tunnel_engine::TunnelManager;
 
 /// Shared application state accessible from Tauri commands.
@@ -386,4 +387,32 @@ pub async fn import_config_from_file(
     *app_config = imported.clone();
     config_store::save_config(&app, &app_config)?;
     Ok(imported)
+}
+
+// ─── SSH Command Parser ────────────────────────────────────────
+
+#[tauri::command]
+pub async fn parse_ssh_command(command: String) -> Result<TunnelConfig, String> {
+    ssh_command_parser::parse_ssh_command(&command)
+}
+
+// ─── Autostart ─────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| format!("获取开机自启状态失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn set_autostart_enabled(enabled: bool, app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| format!("启用开机自启失败: {}", e))
+    } else {
+        manager.disable().map_err(|e| format!("禁用开机自启失败: {}", e))
+    }
 }

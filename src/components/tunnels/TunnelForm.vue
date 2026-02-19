@@ -5,8 +5,11 @@ import {
   NSelect, NSwitch, NButton, NSpace, NDivider, NText,
   useMessage,
 } from 'naive-ui'
+import { FolderOpenOutline } from '@vicons/ionicons5'
+import { NIcon } from 'naive-ui'
+import { open } from '@tauri-apps/plugin-dialog'
 import type { TunnelConfig } from '../../types'
-import { createDefaultTunnel } from '../../types'
+import { createDefaultTunnel, generateSshCommand } from '../../types'
 import { useTunnelStore } from '../../stores/tunnelStore'
 import { useGroupStore } from '../../stores/groupStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -85,6 +88,32 @@ const forwardModeOptions = [
 const needsRemoteTarget = computed(() =>
   formData.value.forward_mode !== 'dynamic'
 )
+
+// SSH command preview
+const sshCommandPreview = computed(() => {
+  const f = formData.value
+  if (!f.ssh_host || !f.local_port) return ''
+  return generateSshCommand(f)
+})
+
+// Key file picker
+async function pickKeyFile() {
+  try {
+    const path = await open({
+      title: '选择 SSH 密钥文件',
+      multiple: false,
+      filters: [
+        { name: '所有文件', extensions: ['*'] },
+        { name: '密钥文件', extensions: ['pem', 'key', 'pub', 'ppk'] },
+      ],
+    })
+    if (path && formData.value.auth.type === 'keyfile') {
+      (formData.value.auth as any).path = path as string
+    }
+  } catch (e) {
+    message.error(`选择文件失败: ${e}`)
+  }
+}
 
 async function handleSubmit() {
   // Basic validation
@@ -178,10 +207,16 @@ async function handleSubmit() {
 
         <template v-if="authType === 'keyfile'">
           <NFormItem label="密钥路径">
-            <NInput
-              v-model:value="(formData.auth as any).path"
-              placeholder="例: C:\Users\user\.ssh\id_rsa"
-            />
+            <NSpace style="width: 100%;" :wrap="false">
+              <NInput
+                v-model:value="(formData.auth as any).path"
+                placeholder="例: C:\Users\user\.ssh\id_rsa"
+                style="flex: 1;"
+              />
+              <NButton @click="pickKeyFile" size="medium">
+                <template #icon><NIcon :component="FolderOpenOutline" /></template>
+              </NButton>
+            </NSpace>
           </NFormItem>
           <NFormItem label="密钥密码">
             <NInput
@@ -232,6 +267,16 @@ async function handleSubmit() {
         <NFormItem label="额外参数">
           <NInput v-model:value="formData.extra_args" placeholder="额外 SSH 参数 (可选)" />
         </NFormItem>
+
+        <!-- SSH Command Preview -->
+        <template v-if="sshCommandPreview">
+          <NDivider title-placement="left" style="margin: 12px 0;">
+            <NText depth="3" style="font-size: 13px;">SSH 命令预览</NText>
+          </NDivider>
+          <div style="padding: 8px 12px; border-radius: 4px; background: var(--n-color-embedded, rgba(0,0,0,0.04)); word-break: break-all; font-family: 'Fira Code', monospace; font-size: 12px; line-height: 1.6; color: var(--n-text-color-2, #666);">
+            {{ sshCommandPreview }}
+          </div>
+        </template>
       </NForm>
 
       <template #footer>

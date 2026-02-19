@@ -86,7 +86,7 @@ Write-Host "`n>>> Packaging Portable ZIP..." -ForegroundColor Yellow
 $ExeName = "$AppName.exe"
 $ExeCandidates = @(
     (Join-Path $ReleaseDir $ExeName),
-    (Join-Path $ReleaseDir ($AppName.ToLower() -replace ' ','-') + '.exe'),
+    (Join-Path $ReleaseDir (($AppName.ToLower() -replace ' ','-') + '.exe')),
     (Join-Path $ReleaseDir 'tunnel-hub.exe')
 )
 $ExePath = $ExeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1

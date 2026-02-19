@@ -99,6 +99,22 @@ export async function importConfigFromFile(path: string): Promise<AppConfig> {
   return invoke<AppConfig>('import_config_from_file', { path })
 }
 
+// ─── SSH Command Parser ────────────────────────────────────────
+
+export async function parseSshCommand(command: string): Promise<TunnelConfig> {
+  return invoke<TunnelConfig>('parse_ssh_command', { command })
+}
+
+// ─── Autostart ─────────────────────────────────────────────────
+
+export async function getAutostartEnabled(): Promise<boolean> {
+  return invoke<boolean>('get_autostart_enabled')
+}
+
+export async function setAutostartEnabled(enabled: boolean): Promise<void> {
+  return invoke('set_autostart_enabled', { enabled })
+}
+
 // ─── Event Listeners ───────────────────────────────────────────
 
 export async function onTunnelStatusChanged(

@@ -214,3 +214,49 @@ export function createDefaultJumpHost(): JumpHost {
     auth: { type: 'agent' },
   }
 }
+
+// ─── SSH Command Generator ─────────────────────────────────────
+
+export function generateSshCommand(config: TunnelConfig): string {
+  const parts: string[] = ['ssh', '-fNg', '-o', 'ServerAliveInterval=60']
+
+  // Jump hosts
+  if (config.jump_hosts.length > 0) {
+    const jumps = config.jump_hosts.map(j => {
+      const userPart = j.user ? `${j.user}@` : ''
+      const portPart = j.port !== 22 ? `:${j.port}` : ''
+      return `${userPart}${j.host}${portPart}`
+    })
+    parts.push('-J', jumps.join(','))
+  }
+
+  // Auth
+  if (config.auth.type === 'keyfile') {
+    const path = (config.auth as KeyFileAuth).path
+    parts.push('-i', path.includes(' ') ? `"${path}"` : path)
+  }
+
+  // Forwarding
+  switch (config.forward_mode) {
+    case 'local':
+      parts.push(`-L ${config.local_port}:${config.remote_host}:${config.remote_port}`)
+      break
+    case 'remote':
+      parts.push(`-R ${config.remote_port}:${config.remote_host}:${config.local_port}`)
+      break
+    case 'dynamic':
+      parts.push(`-D ${config.local_port}`)
+      break
+  }
+
+  // Destination
+  const dest = config.ssh_user ? `${config.ssh_user}@${config.ssh_host}` : config.ssh_host
+  parts.push(dest)
+
+  // Port
+  if (config.ssh_port !== 22) {
+    parts.push('-p', String(config.ssh_port))
+  }
+
+  return parts.join(' ')
+}

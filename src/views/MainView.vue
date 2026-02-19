@@ -7,6 +7,7 @@ import TunnelList from '../components/tunnels/TunnelList.vue'
 import TunnelForm from '../components/tunnels/TunnelForm.vue'
 import GroupForm from '../components/groups/GroupForm.vue'
 import TunnelLogPanel from '../components/logs/TunnelLogPanel.vue'
+import SshImportModal from '../components/tunnels/SshImportModal.vue'
 import { useTunnelStore } from '../stores/tunnelStore'
 import { useGroupStore } from '../stores/groupStore'
 
@@ -52,6 +53,7 @@ const filteredTunnels = computed(() => {
     <TunnelForm />
     <GroupForm />
     <TunnelLogPanel />
+    <SshImportModal />
   </NLayout>
 </template>
 

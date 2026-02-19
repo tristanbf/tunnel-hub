@@ -1,17 +1,39 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { NButton, NSpace, NSwitch, NText, NBadge, useMessage } from 'naive-ui'
-import { SunnyOutline, MoonOutline, CloudUploadOutline, CloudDownloadOutline, AddOutline } from '@vicons/ionicons5'
-import { NIcon } from 'naive-ui'
+import { SunnyOutline, MoonOutline, CloudUploadOutline, CloudDownloadOutline, AddOutline, TerminalOutline, PowerOutline } from '@vicons/ionicons5'
+import { NIcon, NTooltip } from 'naive-ui'
 import { useUiStore } from '../../stores/uiStore'
 import { useTunnelStore } from '../../stores/tunnelStore'
 import { save, open } from '@tauri-apps/plugin-dialog'
-import { exportConfigToFile, importConfigFromFile } from '../../composables/useTauri'
+import { exportConfigToFile, importConfigFromFile, getAutostartEnabled, setAutostartEnabled } from '../../composables/useTauri'
 import { useGroupStore } from '../../stores/groupStore'
 
 const uiStore = useUiStore()
 const tunnelStore = useTunnelStore()
 const groupStore = useGroupStore()
 const message = useMessage()
+
+const autostart = ref(false)
+
+onMounted(async () => {
+  try {
+    autostart.value = await getAutostartEnabled()
+  } catch (_) {
+    // Ignore errors on unsupported platforms
+  }
+})
+
+async function toggleAutostart() {
+  try {
+    const newVal = !autostart.value
+    await setAutostartEnabled(newVal)
+    autostart.value = newVal
+    message.success(newVal ? '已启用开机自启' : '已禁用开机自启')
+  } catch (e) {
+    message.error(`设置失败: ${e}`)
+  }
+}
 
 async function handleExport() {
   try {
@@ -74,6 +96,11 @@ async function handleImport() {
           新建隧道
         </NButton>
 
+        <NButton size="small" quaternary @click="uiStore.openSshImport()">
+          <template #icon><NIcon :component="TerminalOutline" /></template>
+          SSH 导入
+        </NButton>
+
         <NButton size="small" quaternary @click="handleImport">
           <template #icon><NIcon :component="CloudDownloadOutline" /></template>
           导入
@@ -83,6 +110,20 @@ async function handleImport() {
           <template #icon><NIcon :component="CloudUploadOutline" /></template>
           导出
         </NButton>
+
+        <NTooltip>
+          <template #trigger>
+            <NButton
+              size="small"
+              quaternary
+              :type="autostart ? 'success' : 'default'"
+              @click="toggleAutostart"
+            >
+              <template #icon><NIcon :component="PowerOutline" /></template>
+            </NButton>
+          </template>
+          {{ autostart ? '开机自启: 已启用 (点击禁用)' : '开机自启: 已禁用 (点击启用)' }}
+        </NTooltip>
 
         <NSwitch
           :value="uiStore.darkMode"

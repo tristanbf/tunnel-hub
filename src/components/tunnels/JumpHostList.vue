@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import {
   NCard, NInput, NInputNumber, NSelect, NButton, NSpace,
-  NIcon, NText, NFormItem, NForm,
+  NIcon, NText, NFormItem, NForm, useMessage,
 } from 'naive-ui'
-import { AddOutline, TrashOutline, ChevronDownOutline, ChevronUpOutline } from '@vicons/ionicons5'
+import { AddOutline, TrashOutline, ChevronDownOutline, ChevronUpOutline, FolderOpenOutline } from '@vicons/ionicons5'
+import { open } from '@tauri-apps/plugin-dialog'
 import type { JumpHost } from '../../types'
 import { createDefaultJumpHost } from '../../types'
 
@@ -66,6 +67,28 @@ const authTypeOptions = [
   { label: '密码', value: 'password' },
   { label: '密钥文件', value: 'keyfile' },
 ]
+
+const message = useMessage()
+
+async function pickJumpKeyFile(index: number) {
+  try {
+    const path = await open({
+      title: '选择 SSH 密钥文件',
+      multiple: false,
+      filters: [
+        { name: '所有文件', extensions: ['*'] },
+        { name: '密钥文件', extensions: ['pem', 'key', 'pub', 'ppk'] },
+      ],
+    })
+    if (path) {
+      const updated = [...props.jumpHosts]
+      updated[index] = { ...updated[index], auth: { type: 'keyfile', path: path as string } }
+      emit('update:jumpHosts', updated)
+    }
+  } catch (e) {
+    message.error(`选择文件失败: ${e}`)
+  }
+}
 </script>
 
 <template>
@@ -143,15 +166,21 @@ const authTypeOptions = [
         </NFormItem>
 
         <NFormItem v-if="jump.auth.type === 'keyfile'" label="密钥">
-          <NInput
-            :value="(jump.auth as any).path"
-            placeholder="密钥文件路径"
-            @update:value="(v: string) => {
-              const updated = [...jumpHosts]
-              updated[index] = { ...updated[index], auth: { type: 'keyfile', path: v } }
-              emit('update:jumpHosts', updated)
-            }"
-          />
+          <NSpace style="width: 100%;" :wrap="false">
+            <NInput
+              :value="(jump.auth as any).path"
+              placeholder="密钥文件路径"
+              style="flex: 1;"
+              @update:value="(v: string) => {
+                const updated = [...jumpHosts]
+                updated[index] = { ...updated[index], auth: { type: 'keyfile', path: v } }
+                emit('update:jumpHosts', updated)
+              }"
+            />
+            <NButton size="small" @click="pickJumpKeyFile(index)">
+              <template #icon><NIcon :component="FolderOpenOutline" /></template>
+            </NButton>
+          </NSpace>
         </NFormItem>
       </NForm>
     </NCard>
