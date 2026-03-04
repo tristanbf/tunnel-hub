@@ -1,0 +1,30 @@
+.github/
+conf/tunnelhub_config.json
+release-assets/
+src-tauri/gen
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules
+.DS_Store
+
+# Build
+dist
+dist-ssr
+
+# Tauri
+src-tauri/target
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
