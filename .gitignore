@@ -1,4 +1,3 @@
-.github/
 conf/tunnelhub_config.json
 release-assets/
 src-tauri/gen

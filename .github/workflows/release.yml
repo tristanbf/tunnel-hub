@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri App
+        run: npx tauri build
+
+      - name: Prepare Release Assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $VERSION = $env:GITHUB_REF_NAME  # e.g., v0.1.0
+
+          # ── MSI Installer ──
+          $msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Recurse -Include *.msi -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if ($null -eq $msi) {
+            $msi = Get-ChildItem -Path 'src-tauri/target/release/bundle' -Recurse -Include *.msi -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          }
+          if ($null -ne $msi) {
+            $dest = "TunnelHub-$VERSION-Windows.msi"
+            Copy-Item $msi.FullName (Join-Path release-assets $dest)
+            Write-Host "MSI: $dest"
+          } else {
+            Write-Warning 'No MSI found'
+          }
+
+          # ── NSIS Installer (if built) ──
+          $nsis = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Recurse -Include *.exe -ErrorAction SilentlyContinue |
+                  Select-Object -First 1
+          if ($null -ne $nsis) {
+            $dest = "TunnelHub-$VERSION-Windows-Setup.exe"
+            Copy-Item $nsis.FullName (Join-Path release-assets $dest)
+            Write-Host "NSIS: $dest"
+          }
+
+          # ── Portable ZIP ──
+          $exeCandidates = @(
+            'src-tauri/target/release/TunnelHub.exe',
+            'src-tauri/target/release/tunnel-hub.exe'
+          )
+          $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($null -eq $exePath) {
+            $exePath = Get-ChildItem -Path 'src-tauri/target/release' -Filter '*.exe' -File |
+                       Where-Object { $_.Name -notmatch 'build-script|xtask' -and $_.Length -gt 1MB } |
+                       Sort-Object Length -Descending |
+                       Select-Object -First 1 -ExpandProperty FullName
+          }
+          if ($null -ne $exePath) {
+            $portableDir = 'release-assets/TunnelHub-Portable'
+            New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+            Copy-Item $exePath $portableDir
+            @('# TunnelHub portable build marker', 'portable=true') |
+              Set-Content -Path (Join-Path $portableDir 'portable.ini') -Encoding UTF8
+            $portableZip = "release-assets/TunnelHub-$VERSION-Windows-Portable.zip"
+            Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
+            Remove-Item -Recurse -Force $portableDir
+            Write-Host "Portable: TunnelHub-$VERSION-Windows-Portable.zip"
+          } else {
+            Write-Warning 'Portable exe not found'
+          }
+
+      - name: List Assets
+        shell: bash
+        run: ls -la release-assets/ || true
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: TunnelHub ${{ github.ref_name }}
+          prerelease: false
+          body: |
+            ## TunnelHub ${{ github.ref_name }}
+
+            SSH Tunnel Manager — 支持 Local / Remote / Dynamic (SOCKS5) 端口转发
+
+            ### 下载
+
+            - **Windows 安装版**: `TunnelHub-${{ github.ref_name }}-Windows.msi`
+            - **Windows 绿色版**: `TunnelHub-${{ github.ref_name }}-Windows-Portable.zip`（解压即用）
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
