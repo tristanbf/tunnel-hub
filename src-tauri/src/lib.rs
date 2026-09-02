@@ -10,9 +10,21 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_autostart::MacosLauncher;
 
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be the first plugin so a second launch exits before other plugins run
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -83,13 +95,7 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
-                        "show" => {
-                            if let Some(win) = app.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.unminimize();
-                                let _ = win.set_focus();
-                            }
-                        }
+                        "show" => show_main_window(app),
                         "quit" => {
                             app.exit(0);
                         }
@@ -98,12 +104,7 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.unminimize();
-                            let _ = win.set_focus();
-                        }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;

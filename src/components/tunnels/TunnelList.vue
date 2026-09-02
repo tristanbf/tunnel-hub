@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import {
-  NDataTable, NButton, NIcon, NSpace, NText, NTag,
+  NDataTable, NButton, NIcon, NText, NTag,
   NPopconfirm, NEmpty, NTooltip, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
@@ -24,6 +24,8 @@ const tunnelStore = useTunnelStore()
 const uiStore = useUiStore()
 const groupStore = useGroupStore()
 const message = useMessage()
+const ACTION_COLUMN_WIDTH = 220
+const TABLE_SCROLL_X = 920
 
 async function handleStart(id: string) {
   try {
@@ -160,89 +162,96 @@ const columns: DataTableColumns<TunnelConfig> = [
   {
     title: '操作',
     key: 'actions',
-    width: 200,
+    width: ACTION_COLUMN_WIDTH,
     fixed: 'right',
     render(row) {
       const status = tunnelStore.getStatus(row.id)
       const isRunning = status.status === 'running' || status.status === 'starting'
 
-      return h(NSpace, { size: 4 }, {
-        default: () => [
-          // Start / Stop
-          isRunning
-            ? h(NTooltip, null, {
-                trigger: () => h(NButton, {
-                  size: 'small',
-                  type: 'warning',
-                  quaternary: true,
-                  onClick: () => handleStop(row.id),
-                }, {
-                  icon: () => h(NIcon, { component: StopOutline }),
-                }),
-                default: () => '停止隧道',
-              })
-            : h(NTooltip, null, {
-                trigger: () => h(NButton, {
-                  size: 'small',
-                  type: 'success',
-                  quaternary: true,
-                  onClick: () => handleStart(row.id),
-                }, {
-                  icon: () => h(NIcon, { component: PlayOutline }),
-                }),
-                default: () => '启动隧道',
-              }),
-          // Log
-          h(NTooltip, null, {
-            trigger: () => h(NButton, {
-              size: 'small',
-              quaternary: true,
-              onClick: () => uiStore.openLogPanel(row.id),
-            }, {
-              icon: () => h(NIcon, { component: TerminalOutline }),
-            }),
-            default: () => '查看日志',
-          }),
-          // Edit
-          h(NTooltip, null, {
-            trigger: () => h(NButton, {
-              size: 'small',
-              quaternary: true,
-              onClick: () => uiStore.openEditTunnel(row.id),
-            }, {
-              icon: () => h(NIcon, { component: CreateOutline }),
-            }),
-            default: () => '编辑隧道',
-          }),
-          // Duplicate
-          h(NTooltip, null, {
-            trigger: () => h(NButton, {
-              size: 'small',
-              quaternary: true,
-              onClick: () => handleDuplicate(row.id),
-            }, {
-              icon: () => h(NIcon, { component: CopyOutline }),
-            }),
-            default: () => '复制隧道',
-          }),
-          // Delete
-          h(NPopconfirm, {
-            onPositiveClick: () => handleDelete(row.id),
-          }, {
-            trigger: () => h(NTooltip, null, {
+      return h('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'nowrap',
+          gap: '4px',
+          whiteSpace: 'nowrap',
+          minWidth: 'max-content',
+        },
+      }, [
+        // Start / Stop
+        isRunning
+          ? h(NTooltip, null, {
               trigger: () => h(NButton, {
                 size: 'small',
-                type: 'error',
+                type: 'warning',
                 quaternary: true,
+                onClick: () => handleStop(row.id),
               }, {
-                icon: () => h(NIcon, { component: TrashOutline }),
+                icon: () => h(NIcon, { component: StopOutline }),
               }),
-              default: () => '删除隧道',
+              default: () => '停止隧道',
+            })
+          : h(NTooltip, null, {
+              trigger: () => h(NButton, {
+                size: 'small',
+                type: 'success',
+                quaternary: true,
+                onClick: () => handleStart(row.id),
+              }, {
+                icon: () => h(NIcon, { component: PlayOutline }),
+              }),
+              default: () => '启动隧道',
             }),
-            default: () => '确定删除这个隧道？',
+        // Log
+        h(NTooltip, null, {
+          trigger: () => h(NButton, {
+            size: 'small',
+            quaternary: true,
+            onClick: () => uiStore.openLogPanel(row.id),
+          }, {
+            icon: () => h(NIcon, { component: TerminalOutline }),
           }),
-        ],
-      })
+          default: () => '查看日志',
+        }),
+        // Edit
+        h(NTooltip, null, {
+          trigger: () => h(NButton, {
+            size: 'small',
+            quaternary: true,
+            onClick: () => uiStore.openEditTunnel(row.id),
+          }, {
+            icon: () => h(NIcon, { component: CreateOutline }),
+          }),
+          default: () => '编辑隧道',
+        }),
+        // Duplicate
+        h(NTooltip, null, {
+          trigger: () => h(NButton, {
+            size: 'small',
+            quaternary: true,
+            onClick: () => handleDuplicate(row.id),
+          }, {
+            icon: () => h(NIcon, { component: CopyOutline }),
+          }),
+          default: () => '复制隧道',
+        }),
+        // Delete
+        h(NPopconfirm, {
+          onPositiveClick: () => handleDelete(row.id),
+        }, {
+          trigger: () => h(NTooltip, null, {
+            trigger: () => h(NButton, {
+              size: 'small',
+              type: 'error',
+              quaternary: true,
+            }, {
+              icon: () => h(NIcon, { component: TrashOutline }),
+            }),
+            default: () => '删除隧道',
+          }),
+          default: () => '确定删除这个隧道？',
+        }),
+      ])
     },
   },
 ]
@@ -269,7 +278,7 @@ const columns: DataTableColumns<TunnelConfig> = [
       :single-line="false"
       striped
       size="small"
-      :scroll-x="800"
+      :scroll-x="TABLE_SCROLL_X"
       style="margin-top: 12px;"
     />
 

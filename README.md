@@ -20,6 +20,7 @@ TunnelHub 是一款基于 **Tauri 2 + Rust + Vue 3** 构建的跨平台桌面应
 | ♻️ 自动重连 | 隧道断线后自动重新建立连接 |
 | 📋 实时日志 | 每条隧道独立日志，最近 500 条滚动展示 |
 | 🚀 开机自启 | 通过 Tauri autostart 插件实现 |
+| 📌 单实例运行 | 禁止同时启动多个进程；再次打开会唤起已有窗口（含托盘隐藏） |
 | 📥 导入 SSH 命令 | 粘贴 `ssh -L / -R / -D` 命令自动解析参数 |
 
 ---
@@ -28,7 +29,7 @@ TunnelHub 是一款基于 **Tauri 2 + Rust + Vue 3** 构建的跨平台桌面应
 
 - 🎨 **前端**：Vue 3 · TypeScript · Naive UI · Pinia · Vite 6
 - ⚙️ **后端**：Rust (edition 2021) · Tauri 2 · russh 0.57 · Tokio
-- 📦 **打包**：MSI 安装包 · NSIS 安装包 · 免安装便携版 ZIP
+- 📦 **打包**：Windows 单文件可执行程序（`TunnelHub-v{VERSION}-Windows.exe`）
 
 ---
 
@@ -68,17 +69,16 @@ npm run tauri -- dev
 npm run tauri -- build
 ```
 
-### 🪟 Windows 发布构建（生成 MSI + 便携 ZIP）
+### 🪟 Windows 发布构建
 
 ```powershell
 .\scripts\build-windows.ps1
 ```
 
-构建产物位于 `release-assets/` 目录：
+脚本会执行 `tauri build --no-bundle`，把最终可执行文件复制到 `release-assets/`，并默认清理 `dist/` 与 `src-tauri/target/`。需要保留中间产物时加 `-KeepBuildArtifacts`。
 
 ```
-TunnelHub-v{VERSION}-Windows.msi
-TunnelHub-v{VERSION}-Windows-Portable.zip
+release-assets/TunnelHub-v{VERSION}-Windows.exe
 ```
 
 ---

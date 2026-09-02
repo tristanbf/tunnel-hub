@@ -1,14 +1,15 @@
 # TunnelHub Windows Build Script
 # Produces:
-#   - TunnelHub-v{VERSION}-Windows.msi          (installer)
-#   - TunnelHub-v{VERSION}-Windows-Portable.zip  (portable / green version)
+#   - TunnelHub-v{VERSION}-Windows.exe
 #
 # Usage:
 #   .\scripts\build-windows.ps1
-#   .\scripts\build-windows.ps1 -SkipBuild   # only re-package from existing build
+#   .\scripts\build-windows.ps1 -SkipBuild
+#   .\scripts\build-windows.ps1 -KeepBuildArtifacts
 
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$KeepBuildArtifacts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,7 +22,6 @@ if (-not (Test-Path (Join-Path $ProjectRoot 'src-tauri'))) {
 }
 $TauriDir     = Join-Path $ProjectRoot 'src-tauri'
 $ReleaseDir   = Join-Path $TauriDir    'target\release'
-$BundleDir    = Join-Path $ReleaseDir  'bundle'
 $OutputDir    = Join-Path $ProjectRoot 'release-assets'
 
 # ─── Read version from tauri.conf.json ──────────────────────
@@ -39,10 +39,10 @@ if (Test-Path $CargoHome) {
 
 # ─── Build ──────────────────────────────────────────────────
 if (-not $SkipBuild) {
-    Write-Host "`n>>> Running: npm run tauri build" -ForegroundColor Yellow
+    Write-Host "`n>>> Running: npm run tauri -- build --no-bundle" -ForegroundColor Yellow
     Push-Location $ProjectRoot
     try {
-        npm run tauri -- build
+        npm run tauri -- build --no-bundle
         if ($LASTEXITCODE -ne 0) { throw "Tauri build failed with exit code $LASTEXITCODE" }
     } finally {
         Pop-Location
@@ -55,33 +55,8 @@ if (-not $SkipBuild) {
 if (Test-Path $OutputDir) { Remove-Item -Recurse -Force $OutputDir }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-# ─── 1) MSI Installer ──────────────────────────────────────
-Write-Host "`n>>> Packaging MSI installer..." -ForegroundColor Yellow
-
-$Msi = Get-ChildItem -Path $BundleDir -Recurse -Include '*.msi' -ErrorAction SilentlyContinue |
-       Select-Object -First 1
-
-if ($null -ne $Msi) {
-    $MsiDest = "$AppName-$Version-Windows.msi"
-    Copy-Item $Msi.FullName (Join-Path $OutputDir $MsiDest)
-    Write-Host "  MSI: $MsiDest" -ForegroundColor Green
-} else {
-    Write-Warning "No MSI found under $BundleDir"
-}
-
-# ─── 2) NSIS Installer (if available) ──────────────────────
-$Nsis = Get-ChildItem -Path $BundleDir -Recurse -Include '*.exe' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Directory.Name -eq 'nsis' } |
-        Select-Object -First 1
-
-if ($null -ne $Nsis) {
-    $NsisDest = "$AppName-$Version-Windows-Setup.exe"
-    Copy-Item $Nsis.FullName (Join-Path $OutputDir $NsisDest)
-    Write-Host "  NSIS: $NsisDest" -ForegroundColor Green
-}
-
-# ─── 3) Portable ZIP ───────────────────────────────────────
-Write-Host "`n>>> Packaging Portable ZIP..." -ForegroundColor Yellow
+# ─── Package final executable only ──────────────────────────
+Write-Host "`n>>> Collecting final executable..." -ForegroundColor Yellow
 
 $ExeName = "$AppName.exe"
 $ExeCandidates = @(
@@ -100,29 +75,27 @@ if ($null -eq $ExePath) {
 }
 
 if ($null -ne $ExePath) {
-    $PortableTempDir = Join-Path $OutputDir "$AppName-Portable"
-    New-Item -ItemType Directory -Force -Path $PortableTempDir | Out-Null
-
-    # Copy exe
-    Copy-Item $ExePath $PortableTempDir
-
-    # Create portable marker file (cc-switch pattern)
-    @(
-        "# $AppName portable build marker",
-        "portable=true"
-    ) | Set-Content -Path (Join-Path $PortableTempDir 'portable.ini') -Encoding UTF8
-
-    # Create the zip
-    $PortableZip = "$AppName-$Version-Windows-Portable.zip"
-    $PortableZipPath = Join-Path $OutputDir $PortableZip
-    Compress-Archive -Path "$PortableTempDir\*" -DestinationPath $PortableZipPath -Force
-
-    # Cleanup temp
-    Remove-Item -Recurse -Force $PortableTempDir
-
-    Write-Host "  Portable: $PortableZip" -ForegroundColor Green
+    $FinalExeName = "$AppName-$Version-Windows.exe"
+    Copy-Item $ExePath (Join-Path $OutputDir $FinalExeName)
+    Write-Host "  EXE: $FinalExeName" -ForegroundColor Green
 } else {
-    Write-Warning "No executable found for portable packaging"
+    throw "No executable found under $ReleaseDir"
+}
+
+# ─── Cleanup intermediate artifacts ─────────────────────────
+if (-not $KeepBuildArtifacts) {
+    Write-Host "`n>>> Cleaning intermediate build artifacts..." -ForegroundColor Yellow
+    $CleanupPaths = @(
+        (Join-Path $ProjectRoot 'dist'),
+        (Join-Path $TauriDir 'target')
+    )
+
+    foreach ($Path in $CleanupPaths) {
+        if (Test-Path $Path) {
+            Remove-Item -Recurse -Force $Path
+            Write-Host "  Removed: $Path" -ForegroundColor DarkGray
+        }
+    }
 }
 
 # ─── Summary ────────────────────────────────────────────────

@@ -14,6 +14,7 @@ TunnelHub 是一个跨平台桌面应用，用来管理 SSH 隧道。用户可�
 - 实时看到每条隧道的运行状态和日志
 - 通过粘贴一条 ssh 命令来快速导入配置
 - 开机自启、最小化到系统托盘
+- 单实例运行：已有进程时再次启动会唤起原窗口，而不是再开一套引擎
 
 支持三种 SSH 转发模式：
 - **本地端口转发**（`-L`）：把本机某个端口的流量，通过 SSH 服务器转发到指定目标
@@ -44,7 +45,7 @@ TunnelHub 是一个跨平台桌面应用，用来管理 SSH 隧道。用户可�
 | 时间 | chrono | features = ["serde"] |
 | 错误处理 | anyhow | |
 | 日志 | log + env_logger 或 tauri 内建日志 | |
-| Tauri 插件 | tauri-plugin-dialog, tauri-plugin-autostart, tauri-plugin-fs | `^2.x` |
+| Tauri 插件 | tauri-plugin-dialog, tauri-plugin-autostart, tauri-plugin-fs, tauri-plugin-single-instance | `^2.x` |
 
 **Cargo 路径（Windows 开发机）：** `C:\Users\doudou\.cargo\bin\cargo.exe`
 
@@ -85,7 +86,7 @@ tunnel_hub/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs             # 程序入口，调用 lib::run()
-│   │   ├── lib.rs              # Tauri Builder 配置、系统托盘、插件注册
+│   │   ├── lib.rs              # Tauri Builder 配置、单实例、系统托盘、插件注册
 │   │   ├── models.rs           # 所有数据结构定义
 │   │   ├── commands.rs         # 所有 #[tauri::command] 函数 + AppState
 │   │   ├── tunnel_engine.rs    # SSH 隧道核心逻辑（russh 实现）
@@ -478,13 +479,22 @@ import_config(path) → Result<AppConfig, String>
 ### 5.6 系统托盘与生命周期（`lib.rs`）
 
 ```
+单实例（必须作为 Builder 上注册的第一个插件）：
+  - 使用 tauri-plugin-single-instance
+  - 已有实例在运行时，新进程立即退出
+  - 回调里调用 show_main_window：show + unminimize + set_focus
+  - 这样在窗口已藏到托盘、或用户再次点击快捷方式/开机自启叠加手动启动时，
+    只会唤起原窗口，不会再开一套隧道引擎或重复占用端口
+
+show_main_window 同时供托盘菜单、托盘双击、单实例回调复用。
+
 Tauri 启动时（setup 回调）：
 1. 调用 config_store::load_config，加载配置到 AppState
 2. 调用 manager.set_app_handle(handle)，让 TunnelManager 持有 AppHandle 以发射事件
 3. 创建系统托盘：
    - 图标：app.default_window_icon()
    - 菜单：[打开主界面] [分割线] [退出]
-   - 双击托盘图标 → 显示主窗口并聚焦
+   - 双击托盘图标 → show_main_window
    - 点击"打开主界面" → 同上
    - 点击"退出" → app.exit(0)
 
@@ -726,11 +736,14 @@ export function useTunnelEvents() {
 4. 本地端口
 5. 目标（`remote_host:remote_port`，dynamic 模式显示 SOCKS5）
 6. SSH 服务器（`ssh_user@ssh_host:ssh_port`）
-7. 操作列（鼠标悬停时显示，hover 有 tooltip）：
+7. 操作列（固定在右侧，按钮单行不换行；每个按钮 hover 有 tooltip）：
    - 启动/停止（根据状态切换，tooltip："启动隧道"/"停止隧道"）
-   - 编辑（tooltip："编辑"）
-   - 复制（tooltip："复制"）
-   - 删除（tooltip："删除"，需确认）
+   - 日志（tooltip："查看日志"）
+   - 编辑（tooltip："编辑隧道"）
+   - 复制（tooltip："复制隧道"）
+   - 删除（tooltip："删除隧道"，需确认）
+   - 实现要求：不要用会自动换行的 NSpace；用 flex + nowrap。
+     列宽约 220，表格 scroll-x 约 920，避免窄窗口把按钮折到第二行。
 
 点击某行（非操作按钮区域）→ 展开底部日志面板显示该隧道日志
 
@@ -843,10 +856,9 @@ Dynamic 模式：
 ### 7.1 Windows
 
 目标产物：
-1. **MSI 安装包**（`TunnelHub_x.x.x_x64_en-US.msi`）
-2. **Portable 压缩包**（`TunnelHub-Windows-Portable.zip`，包含 `.exe` 文件，解压即用）
+1. **单文件可执行程序**（`release-assets/TunnelHub-v{VERSION}-Windows.exe`）
 
-参考打包方式：[farion1231/cc-switch](https://github.com/farion1231/cc-switch) 的 GitHub Actions。
+本地发布用 `.\scripts\build-windows.ps1`：`tauri build --no-bundle`，复制 exe 到 `release-assets/`，默认清理 `dist/` 与 `src-tauri/target/`。加 `-KeepBuildArtifacts` 可保留中间产物。`tauri.conf.json` 仍可保留 MSI/NSIS bundle 配置，供需要安装包时使用。
 
 `tauri.conf.json` 关键配置：
 ```json
@@ -874,13 +886,16 @@ Dynamic 模式：
 
 ```bash
 # 开发模式
-npm run tauri dev
+npm run tauri -- dev
 
 # 生产构建
-npm run tauri build
+npm run tauri -- build
 
 # 仅前端构建
 npm run build
+
+# Windows 发布（输出 release-assets/TunnelHub-v{VERSION}-Windows.exe）
+.\scripts\build-windows.ps1
 ```
 
 ---
@@ -901,6 +916,8 @@ npm run build
 | 8 | 编辑页无 SSH 命令预览 | 已实现：表单底部实时显示等效 SSH 命令 |
 | 9 | 无 SSH 命令导入 | 已实现：通过 TunnelImportModal + parse_ssh_command 命令 |
 | 10 | SSH Key 认证无文件选择 | 已实现：使用 tauri-plugin-dialog 的 open() 打开文件选择器 |
+| 11 | 可启动多个实例 | 已实现：tauri-plugin-single-instance 作为第一个插件注册；二次启动唤起已有窗口 |
+| 12 | 操作列按钮换行 | 已实现：操作列 flex nowrap + 固定列宽，窄窗口下按钮保持单行 |
 
 ---
 
