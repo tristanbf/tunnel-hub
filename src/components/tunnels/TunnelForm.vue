@@ -207,16 +207,18 @@ async function handleSubmit() {
 
         <template v-if="authType === 'keyfile'">
           <NFormItem label="密钥路径">
-            <NSpace style="width: 100%;" :wrap="false">
+            <div class="key-path-field">
               <NInput
                 v-model:value="(formData.auth as any).path"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 4 }"
                 placeholder="例: C:\Users\user\.ssh\id_rsa"
-                style="flex: 1;"
+                :title="(formData.auth as any).path || undefined"
               />
               <NButton @click="pickKeyFile" size="medium">
                 <template #icon><NIcon :component="FolderOpenOutline" /></template>
               </NButton>
-            </NSpace>
+            </div>
           </NFormItem>
           <NFormItem label="密钥密码">
             <NInput
@@ -290,3 +292,29 @@ async function handleSubmit() {
     </NDrawerContent>
   </NDrawer>
 </template>
+
+<style scoped>
+:deep(.n-form-item-blank) {
+  min-width: 0;
+}
+
+.key-path-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.key-path-field :deep(.n-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-path-field :deep(textarea) {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  font-family: 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+}
+</style>

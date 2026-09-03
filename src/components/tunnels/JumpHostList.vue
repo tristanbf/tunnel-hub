@@ -166,11 +166,13 @@ async function pickJumpKeyFile(index: number) {
         </NFormItem>
 
         <NFormItem v-if="jump.auth.type === 'keyfile'" label="密钥">
-          <NSpace style="width: 100%;" :wrap="false">
+          <div class="key-path-field">
             <NInput
               :value="(jump.auth as any).path"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }"
               placeholder="密钥文件路径"
-              style="flex: 1;"
+              :title="(jump.auth as any).path || undefined"
               @update:value="(v: string) => {
                 const updated = [...jumpHosts]
                 updated[index] = { ...updated[index], auth: { type: 'keyfile', path: v } }
@@ -180,7 +182,7 @@ async function pickJumpKeyFile(index: number) {
             <NButton size="small" @click="pickJumpKeyFile(index)">
               <template #icon><NIcon :component="FolderOpenOutline" /></template>
             </NButton>
-          </NSpace>
+          </div>
         </NFormItem>
       </NForm>
     </NCard>
@@ -200,5 +202,29 @@ async function pickJumpKeyFile(index: number) {
 <style scoped>
 .jump-host-list {
   width: 100%;
+}
+
+.jump-host-list :deep(.n-form-item-blank) {
+  min-width: 0;
+}
+
+.key-path-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.key-path-field :deep(.n-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-path-field :deep(textarea) {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  font-family: 'Fira Code', Consolas, monospace;
+  font-size: 12px;
 }
 </style>
