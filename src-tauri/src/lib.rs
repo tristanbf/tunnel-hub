@@ -38,6 +38,7 @@ pub fn run() {
             commands::update_tunnel,
             commands::delete_tunnel,
             commands::duplicate_tunnel,
+            commands::reorder_tunnels,
             // Tunnel Control
             commands::start_tunnel,
             commands::stop_tunnel,

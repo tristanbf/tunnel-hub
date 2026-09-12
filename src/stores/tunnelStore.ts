@@ -110,6 +110,30 @@ export const useTunnelStore = defineStore('tunnel', () => {
     }
   }
 
+  async function reorderTunnels(orderedIds: string[]) {
+    if (orderedIds.length === 0) return
+
+    const prev = tunnels.value
+    const byId = new Map(prev.map(t => [t.id, t]))
+    for (const id of orderedIds) {
+      if (!byId.has(id)) {
+        throw new Error(`Unknown tunnel id: ${id}`)
+      }
+    }
+
+    const visible = new Set(orderedIds)
+    let i = 0
+    const next = prev.map(t => (visible.has(t.id) ? byId.get(orderedIds[i++])! : t))
+    tunnels.value = next
+
+    try {
+      await api.reorderTunnels(orderedIds)
+    } catch (e) {
+      tunnels.value = prev
+      throw e
+    }
+  }
+
   async function assignToGroup(tunnelId: string, groupId: string | null) {
     await api.assignTunnelToGroup(tunnelId, groupId)
     const tunnel = tunnels.value.find(t => t.id === tunnelId)
@@ -156,6 +180,7 @@ export const useTunnelStore = defineStore('tunnel', () => {
     startTunnel,
     stopTunnel,
     assignToGroup,
+    reorderTunnels,
     handleStatusChange,
     handleLogEntry,
   }

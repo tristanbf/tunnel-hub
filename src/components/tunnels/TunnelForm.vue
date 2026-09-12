@@ -46,7 +46,11 @@ watch(() => uiStore.showTunnelForm, (show) => {
     if (uiStore.editingTunnelId) {
       const tunnel = tunnelStore.tunnels.find(t => t.id === uiStore.editingTunnelId)
       if (tunnel) {
-        formData.value = { ...tunnel, jump_hosts: tunnel.jump_hosts.map(j => ({ ...j })) }
+        formData.value = {
+          ...tunnel,
+          auth: { ...tunnel.auth },
+          jump_hosts: tunnel.jump_hosts.map(j => ({ ...j, auth: { ...j.auth } })),
+        }
         authType.value = tunnel.auth.type
       }
     } else {
@@ -58,8 +62,10 @@ watch(() => uiStore.showTunnelForm, (show) => {
   }
 })
 
-// Sync auth type changes
+// Only reset auth when the user actually switches type.
+// Opening the editor also assigns authType, which must not wipe the existing path.
 watch(authType, (type) => {
+  if (formData.value.auth.type === type) return
   switch (type) {
     case 'password':
       formData.value.auth = { type: 'password', password: '' }

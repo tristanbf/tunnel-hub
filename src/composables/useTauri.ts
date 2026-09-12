@@ -33,6 +33,10 @@ export async function duplicateTunnel(id: string): Promise<TunnelConfig> {
   return invoke<TunnelConfig>('duplicate_tunnel', { id })
 }
 
+export async function reorderTunnels(ids: string[]): Promise<void> {
+  return invoke('reorder_tunnels', { ids })
+}
+
 // ─── Tunnel Control ────────────────────────────────────────────
 
 export async function startTunnel(id: string): Promise<void> {

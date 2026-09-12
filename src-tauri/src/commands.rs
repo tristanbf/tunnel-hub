@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
@@ -111,6 +112,54 @@ pub async fn duplicate_tunnel(
     app_config.tunnels.push(copy.clone());
     config_store::save_config(&app, &app_config)?;
     Ok(copy)
+}
+
+/// Reorder tunnels. `ids` is the desired order of a subset (or all) of tunnels.
+/// Those ids keep their existing slots; only their relative order changes.
+#[tauri::command]
+pub async fn reorder_tunnels(
+    ids: Vec<String>,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut app_config = state.config.lock().await;
+    let mut seen = HashSet::new();
+    for id in &ids {
+        if !seen.insert(id.clone()) {
+            return Err("Duplicate tunnel id in reorder list".to_string());
+        }
+        if !app_config.tunnels.iter().any(|t| t.id == *id) {
+            return Err(format!("Unknown tunnel id: {}", id));
+        }
+    }
+
+    let slots: Vec<usize> = app_config
+        .tunnels
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| seen.contains(&t.id))
+        .map(|(i, _)| i)
+        .collect();
+
+    let by_id: HashMap<String, TunnelConfig> = app_config
+        .tunnels
+        .iter()
+        .cloned()
+        .map(|t| (t.id.clone(), t))
+        .collect();
+
+    for (slot, id) in slots.into_iter().zip(ids.iter()) {
+        if let Some(tunnel) = by_id.get(id) {
+            app_config.tunnels[slot] = tunnel.clone();
+        }
+    }
+
+    config_store::save_config(&app, &app_config)?;
+    Ok(())
 }
 
 // ─── Tunnel Control ────────────────────────────────────────────
