@@ -1,6 +1,6 @@
 [package]
 name = "tunnel-hub"
-version = "0.1.5"
+version = "0.1.6"
 description = "SSH Tunnel Manager"
 authors = ["zeptools"]
 edition = "2021"

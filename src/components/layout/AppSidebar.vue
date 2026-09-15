@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, onUnmounted, ref } from 'vue'
 import {
   NTree, NButton, NIcon, NSpace, NText, NDivider, NDropdown,
   useMessage, useDialog,
@@ -8,11 +8,13 @@ import {
   FolderOutline, AddOutline, PlayOutline, StopOutline,
   ListOutline, SwapHorizontalOutline,
 } from '@vicons/ionicons5'
-import type { TreeDragInfo, TreeDropInfo, TreeOption } from 'naive-ui'
+import type { TreeOption } from 'naive-ui'
 import type { Group, GroupReorderItem } from '../../types'
 import { useGroupStore } from '../../stores/groupStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useTunnelStore } from '../../stores/tunnelStore'
+
+const DRAG_THRESHOLD = 5
 
 const groupStore = useGroupStore()
 const uiStore = useUiStore()
@@ -69,20 +71,179 @@ const selectedKeys = computed(() => {
 })
 
 const expandedKeys = ref<string[]>([])
+const treeWrapRef = ref<HTMLElement | null>(null)
+const draggingId = ref<string | null>(null)
+const dropTarget = ref<{ id: string; after: boolean } | null>(null)
+
+let pointerId: number | null = null
+let startY = 0
+let startX = 0
+let startId: string | null = null
+let dragActivated = false
 
 function isTunnelKey(key: unknown): boolean {
   return String(key).startsWith('tunnel:')
 }
 
-function allowDrop({ node }: { node: TreeOption }): boolean {
-  return !isTunnelKey(node.key)
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return !!target.closest('button, a, .n-button, .n-tree-node-switcher')
 }
 
-function handleDragStart({ node, event }: TreeDragInfo) {
-  if (isTunnelKey(node.key)) {
-    event.preventDefault()
+function detachPointerListeners() {
+  window.removeEventListener('pointermove', handlePointerMove)
+  window.removeEventListener('pointerup', handlePointerUp)
+  window.removeEventListener('pointercancel', handlePointerUp)
+}
+
+function syncDragClasses() {
+  const root = treeWrapRef.value
+  if (!root) return
+  const target = dropTarget.value
+  for (const el of root.querySelectorAll<HTMLElement>('.n-tree-node[data-group-id]')) {
+    const id = el.dataset.groupId
+    el.classList.toggle('group-node-dragging', draggingId.value === id)
+    el.classList.toggle('group-node-drop-before', !!target && target.id === id && !target.after)
+    el.classList.toggle('group-node-drop-after', !!target && target.id === id && target.after)
   }
 }
+
+function handlePointerDown(e: PointerEvent, groupId: string) {
+  if (e.button !== 0) return
+  if (isInteractiveTarget(e.target)) return
+
+  pointerId = e.pointerId
+  startX = e.clientX
+  startY = e.clientY
+  startId = groupId
+  dragActivated = false
+
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', handlePointerUp)
+  window.addEventListener('pointercancel', handlePointerUp)
+}
+
+function updateDropTarget(x: number, y: number) {
+  if (!startId) {
+    dropTarget.value = null
+    return
+  }
+  const el = document.elementFromPoint(x, y)
+  const node = el?.closest('.n-tree-node[data-group-id]') as HTMLElement | null
+  const overId = node?.dataset.groupId
+  if (overId) {
+    if (overId === startId || groupStore.getDescendantIds(startId).includes(overId)) {
+      dropTarget.value = null
+      return
+    }
+    const rect = node.getBoundingClientRect()
+    dropTarget.value = { id: overId, after: y > rect.top + rect.height / 2 }
+    return
+  }
+
+  const wrap = treeWrapRef.value
+  const dragId = startId
+  if (!wrap || !dragId) {
+    dropTarget.value = null
+    return
+  }
+  if (!wrap.contains(el) && el !== wrap) {
+    dropTarget.value = null
+    return
+  }
+
+  const nodes = [...wrap.querySelectorAll<HTMLElement>('.n-tree-node[data-group-id]')]
+  const last = [...nodes].reverse().find(n => {
+    const id = n.dataset.groupId
+    return !!id && id !== dragId && !groupStore.getDescendantIds(dragId).includes(id)
+  })
+  dropTarget.value = last?.dataset.groupId
+    ? { id: last.dataset.groupId, after: true }
+    : null
+}
+
+function handlePointerMove(e: PointerEvent) {
+  if (pointerId !== e.pointerId || !startId) return
+
+  if (!dragActivated) {
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD) return
+    dragActivated = true
+    draggingId.value = startId
+    document.body.classList.add('group-tree-reordering')
+  }
+
+  e.preventDefault()
+  updateDropTarget(e.clientX, e.clientY)
+  syncDragClasses()
+}
+
+async function handlePointerUp(e: PointerEvent) {
+  if (pointerId !== e.pointerId) return
+
+  const fromId = startId
+  const target = dropTarget.value
+  const shouldReorder = dragActivated && !!fromId && !!target
+
+  if (dragActivated) {
+    const stopClick = (ev: MouseEvent) => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      window.removeEventListener('click', stopClick, true)
+    }
+    window.addEventListener('click', stopClick, true)
+  }
+
+  detachPointerListeners()
+  document.body.classList.remove('group-tree-reordering')
+  pointerId = null
+  startId = null
+  dragActivated = false
+  draggingId.value = null
+  dropTarget.value = null
+  syncDragClasses()
+
+  if (!shouldReorder || !fromId || !target) return
+
+  try {
+    await applyGroupReorder(fromId, target.id, target.after)
+  } catch (err) {
+    message.error(`调整顺序失败: ${err}`)
+  }
+}
+
+async function applyGroupReorder(fromId: string, toId: string, placeAfter: boolean) {
+  const targetGroup = groupStore.getGroupById(toId)
+  if (!targetGroup) return
+
+  const newParentId = targetGroup.parent_id
+  if (newParentId === fromId) return
+  if (groupStore.getDescendantIds(fromId).includes(toId)) return
+
+  const siblings = groupStore.groups
+    .filter(g => g.id !== fromId && g.parent_id === newParentId)
+    .map(g => g.id)
+  const idx = siblings.indexOf(toId)
+  if (idx < 0) return
+
+  const orderedSiblings = placeAfter
+    ? [...siblings.slice(0, idx + 1), fromId, ...siblings.slice(idx + 1)]
+    : [...siblings.slice(0, idx), fromId, ...siblings.slice(idx)]
+
+  const items = flattenMovedGroups(groupStore.groups, fromId, newParentId, orderedSiblings)
+  if (items.length !== groupStore.groups.length) return
+  const unchanged = items.every((item, i) => {
+    const g = groupStore.groups[i]
+    return g.id === item.id && g.parent_id === item.parent_id
+  })
+  if (unchanged) return
+
+  await groupStore.reorderGroups(items)
+}
+
+onUnmounted(() => {
+  detachPointerListeners()
+  document.body.classList.remove('group-tree-reordering')
+})
 
 function flattenMovedGroups(
   groups: Group[],
@@ -116,47 +277,6 @@ function flattenMovedGroups(
   }
   walk(null)
   return result
-}
-
-async function handleDrop({ node, dragNode, dropPosition }: TreeDropInfo) {
-  const dragId = String(dragNode.key)
-  const targetId = String(node.key)
-  if (isTunnelKey(dragId) || isTunnelKey(targetId) || dragId === targetId) return
-  if (groupStore.getDescendantIds(dragId).includes(targetId)) return
-
-  const targetGroup = groupStore.getGroupById(targetId)
-  if (!targetGroup) return
-
-  const newParentId = dropPosition === 'inside' ? targetId : targetGroup.parent_id
-  if (newParentId === dragId) return
-
-  const siblings = groupStore.groups
-    .filter(g => g.id !== dragId && g.parent_id === newParentId)
-    .map(g => g.id)
-
-  let orderedSiblings: string[]
-  if (dropPosition === 'inside') {
-    orderedSiblings = [dragId, ...siblings]
-  } else {
-    const idx = siblings.indexOf(targetId)
-    if (idx < 0) return
-    orderedSiblings = dropPosition === 'before'
-      ? [...siblings.slice(0, idx), dragId, ...siblings.slice(idx)]
-      : [...siblings.slice(0, idx + 1), dragId, ...siblings.slice(idx + 1)]
-  }
-
-  const items = flattenMovedGroups(groupStore.groups, dragId, newParentId, orderedSiblings)
-  if (items.length !== groupStore.groups.length) return
-
-  if (dropPosition === 'inside' && !expandedKeys.value.includes(targetId)) {
-    expandedKeys.value = [...expandedKeys.value, targetId]
-  }
-
-  try {
-    await groupStore.reorderGroups(items)
-  } catch (e) {
-    message.error(`调整顺序失败: ${e}`)
-  }
 }
 
 function handleExpandedKeys(keys: string[]) {
@@ -253,6 +373,8 @@ function getNodeProps(info: { option: TreeOption }) {
   const isTunnel = isTunnelKey(key)
   return {
     class: isTunnel ? 'tree-tunnel-node' : 'tree-group-node',
+    'data-group-id': isTunnel ? undefined : key,
+    onPointerdown: isTunnel ? undefined : (e: PointerEvent) => handlePointerDown(e, key),
     onContextmenu: (e: MouseEvent) => {
       e.preventDefault()
       if (!isTunnel) {
@@ -287,21 +409,23 @@ function getNodeProps(info: { option: TreeOption }) {
 
     <NDivider style="margin: 8px 0;" />
 
-    <NTree
-      :data="treeOptions"
-      block-line
-      draggable
-      :allow-drop="allowDrop"
-      :selected-keys="selectedKeys"
-      :expanded-keys="expandedKeys"
-      selectable
-      expand-on-click
-      :node-props="getNodeProps"
-      @update:selected-keys="handleSelect"
-      @update:expanded-keys="handleExpandedKeys"
-      @dragstart="handleDragStart"
-      @drop="handleDrop"
-    />
+    <div
+      ref="treeWrapRef"
+      class="group-tree"
+      :class="{ 'is-reordering': !!draggingId }"
+    >
+      <NTree
+        :data="treeOptions"
+        block-line
+        :selected-keys="selectedKeys"
+        :expanded-keys="expandedKeys"
+        selectable
+        expand-on-click
+        :node-props="getNodeProps"
+        @update:selected-keys="handleSelect"
+        @update:expanded-keys="handleExpandedKeys"
+      />
+    </div>
 
     <!-- Context menu for selected group -->
     <NDropdown
@@ -383,11 +507,47 @@ function getNodeProps(info: { option: TreeOption }) {
   margin-top: auto;
 }
 
+.group-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+:deep(.tree-group-node) {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
 :deep(.tree-group-node .n-tree-node-content) {
   cursor: grab;
 }
 
+:deep(.tree-tunnel-node),
 :deep(.tree-tunnel-node .n-tree-node-content) {
   cursor: default;
+}
+
+:deep(.group-node-dragging) {
+  opacity: 0.45;
+}
+
+:deep(.group-node-drop-before) {
+  box-shadow: inset 0 2px 0 0 #18a058;
+}
+
+:deep(.group-node-drop-after) {
+  box-shadow: inset 0 -2px 0 0 #18a058;
+}
+
+.is-reordering :deep(*) {
+  cursor: grabbing !important;
+}
+</style>
+
+<style>
+body.group-tree-reordering {
+  cursor: grabbing;
+  user-select: none;
 }
 </style>
