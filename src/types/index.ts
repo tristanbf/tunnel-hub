@@ -57,6 +57,11 @@ export interface Group {
   parent_id: string | null
 }
 
+export interface GroupReorderItem {
+  id: string
+  parent_id: string | null
+}
+
 // ─── Tunnel Status ─────────────────────────────────────────────
 
 export type TunnelStatusType = 'stopped' | 'starting' | 'running' | 'stopping' | 'error' | 'reconnecting'

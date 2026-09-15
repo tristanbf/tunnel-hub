@@ -312,6 +312,78 @@ pub async fn delete_group(
     Ok(())
 }
 
+/// Reorder groups and optionally re-parent them.
+/// `items` must list every existing group exactly once; array order is the
+/// persisted sibling order (same parent, earlier index = higher in the tree).
+#[tauri::command]
+pub async fn reorder_groups(
+    items: Vec<GroupReorderItem>,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let mut app_config = state.config.lock().await;
+    if items.len() != app_config.groups.len() {
+        return Err("Group reorder list must include every group".to_string());
+    }
+
+    let mut seen = HashSet::new();
+    let existing: HashSet<String> = app_config.groups.iter().map(|g| g.id.clone()).collect();
+    for item in &items {
+        if !seen.insert(item.id.clone()) {
+            return Err("Duplicate group id in reorder list".to_string());
+        }
+        if !existing.contains(&item.id) {
+            return Err(format!("Unknown group id: {}", item.id));
+        }
+        if let Some(ref parent_id) = item.parent_id {
+            if parent_id == &item.id {
+                return Err("Group cannot be its own parent".to_string());
+            }
+            if !existing.contains(parent_id) {
+                return Err(format!("Unknown parent id: {}", parent_id));
+            }
+        }
+    }
+
+    let parent_of: HashMap<&str, Option<&str>> = items
+        .iter()
+        .map(|i| (i.id.as_str(), i.parent_id.as_deref()))
+        .collect();
+    for item in &items {
+        let mut walked = HashSet::new();
+        let mut current = Some(item.id.as_str());
+        while let Some(id) = current {
+            if !walked.insert(id) {
+                return Err("Group hierarchy contains a cycle".to_string());
+            }
+            current = parent_of.get(id).copied().flatten();
+        }
+    }
+
+    let by_id: HashMap<String, Group> = app_config
+        .groups
+        .iter()
+        .cloned()
+        .map(|g| (g.id.clone(), g))
+        .collect();
+
+    app_config.groups = items
+        .into_iter()
+        .map(|item| {
+            let mut group = by_id.get(&item.id).cloned().expect("id checked above");
+            group.parent_id = item.parent_id;
+            group
+        })
+        .collect();
+
+    config_store::save_config(&app, &app_config)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn assign_tunnel_to_group(
     tunnel_id: String,

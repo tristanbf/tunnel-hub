@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h } from 'vue'
+import { computed, h, ref } from 'vue'
 import {
   NTree, NButton, NIcon, NSpace, NText, NDivider, NDropdown,
   useMessage, useDialog,
@@ -8,7 +8,8 @@ import {
   FolderOutline, AddOutline, PlayOutline, StopOutline,
   ListOutline, SwapHorizontalOutline,
 } from '@vicons/ionicons5'
-import type { TreeOption } from 'naive-ui'
+import type { TreeDragInfo, TreeDropInfo, TreeOption } from 'naive-ui'
+import type { Group, GroupReorderItem } from '../../types'
 import { useGroupStore } from '../../stores/groupStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useTunnelStore } from '../../stores/tunnelStore'
@@ -66,6 +67,101 @@ const treeOptions = computed((): TreeOption[] => {
 const selectedKeys = computed(() => {
   return groupStore.selectedGroupId ? [groupStore.selectedGroupId] : []
 })
+
+const expandedKeys = ref<string[]>([])
+
+function isTunnelKey(key: unknown): boolean {
+  return String(key).startsWith('tunnel:')
+}
+
+function allowDrop({ node }: { node: TreeOption }): boolean {
+  return !isTunnelKey(node.key)
+}
+
+function handleDragStart({ node, event }: TreeDragInfo) {
+  if (isTunnelKey(node.key)) {
+    event.preventDefault()
+  }
+}
+
+function flattenMovedGroups(
+  groups: Group[],
+  movedId: string,
+  newParentId: string | null,
+  siblingOrder: string[],
+): GroupReorderItem[] {
+  const updated = groups.map(g => (
+    g.id === movedId ? { ...g, parent_id: newParentId } : g
+  ))
+
+  const byParent = new Map<string | null, Group[]>()
+  for (const g of updated) {
+    const siblings = byParent.get(g.parent_id)
+    if (siblings) siblings.push(g)
+    else byParent.set(g.parent_id, [g])
+  }
+
+  const orderIdx = new Map(siblingOrder.map((id, i) => [id, i]))
+  const movedSiblings = byParent.get(newParentId)
+  if (movedSiblings) {
+    movedSiblings.sort((a, b) => (orderIdx.get(a.id) ?? 0) - (orderIdx.get(b.id) ?? 0))
+  }
+
+  const result: GroupReorderItem[] = []
+  const walk = (parentId: string | null) => {
+    for (const g of byParent.get(parentId) ?? []) {
+      result.push({ id: g.id, parent_id: g.parent_id })
+      walk(g.id)
+    }
+  }
+  walk(null)
+  return result
+}
+
+async function handleDrop({ node, dragNode, dropPosition }: TreeDropInfo) {
+  const dragId = String(dragNode.key)
+  const targetId = String(node.key)
+  if (isTunnelKey(dragId) || isTunnelKey(targetId) || dragId === targetId) return
+  if (groupStore.getDescendantIds(dragId).includes(targetId)) return
+
+  const targetGroup = groupStore.getGroupById(targetId)
+  if (!targetGroup) return
+
+  const newParentId = dropPosition === 'inside' ? targetId : targetGroup.parent_id
+  if (newParentId === dragId) return
+
+  const siblings = groupStore.groups
+    .filter(g => g.id !== dragId && g.parent_id === newParentId)
+    .map(g => g.id)
+
+  let orderedSiblings: string[]
+  if (dropPosition === 'inside') {
+    orderedSiblings = [dragId, ...siblings]
+  } else {
+    const idx = siblings.indexOf(targetId)
+    if (idx < 0) return
+    orderedSiblings = dropPosition === 'before'
+      ? [...siblings.slice(0, idx), dragId, ...siblings.slice(idx)]
+      : [...siblings.slice(0, idx + 1), dragId, ...siblings.slice(idx + 1)]
+  }
+
+  const items = flattenMovedGroups(groupStore.groups, dragId, newParentId, orderedSiblings)
+  if (items.length !== groupStore.groups.length) return
+
+  if (dropPosition === 'inside' && !expandedKeys.value.includes(targetId)) {
+    expandedKeys.value = [...expandedKeys.value, targetId]
+  }
+
+  try {
+    await groupStore.reorderGroups(items)
+  } catch (e) {
+    message.error(`调整顺序失败: ${e}`)
+  }
+}
+
+function handleExpandedKeys(keys: string[]) {
+  expandedKeys.value = keys
+}
 
 function handleSelect(keys: string[]) {
   if (keys.length === 0) return
@@ -153,10 +249,15 @@ const contextMenuOptions = computed(() => {
 })
 
 function getNodeProps(info: { option: TreeOption }) {
+  const key = String(info.option.key)
+  const isTunnel = isTunnelKey(key)
   return {
+    class: isTunnel ? 'tree-tunnel-node' : 'tree-group-node',
     onContextmenu: (e: MouseEvent) => {
       e.preventDefault()
-      groupStore.selectGroup(info.option.key as string)
+      if (!isTunnel) {
+        groupStore.selectGroup(key)
+      }
     },
   }
 }
@@ -189,11 +290,17 @@ function getNodeProps(info: { option: TreeOption }) {
     <NTree
       :data="treeOptions"
       block-line
+      draggable
+      :allow-drop="allowDrop"
       :selected-keys="selectedKeys"
+      :expanded-keys="expandedKeys"
       selectable
       expand-on-click
       :node-props="getNodeProps"
       @update:selected-keys="handleSelect"
+      @update:expanded-keys="handleExpandedKeys"
+      @dragstart="handleDragStart"
+      @drop="handleDrop"
     />
 
     <!-- Context menu for selected group -->
@@ -274,5 +381,13 @@ function getNodeProps(info: { option: TreeOption }) {
 
 .group-actions {
   margin-top: auto;
+}
+
+:deep(.tree-group-node .n-tree-node-content) {
+  cursor: grab;
+}
+
+:deep(.tree-tunnel-node .n-tree-node-content) {
+  cursor: default;
 }
 </style>

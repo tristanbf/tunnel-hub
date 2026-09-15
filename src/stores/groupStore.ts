@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Group, GroupTreeNode } from '@/types'
+import type { Group, GroupReorderItem, GroupTreeNode } from '@/types'
 import * as api from '@/composables/useTauri'
 
 export const useGroupStore = defineStore('group', () => {
@@ -91,6 +91,32 @@ export const useGroupStore = defineStore('group', () => {
     }
   }
 
+  async function reorderGroups(items: GroupReorderItem[]) {
+    if (items.length === 0) return
+
+    const prev = groups.value
+    const byId = new Map(prev.map(g => [g.id, g]))
+    if (items.length !== prev.length) {
+      throw new Error('分组列表不完整')
+    }
+
+    const next: Group[] = items.map(item => {
+      const group = byId.get(item.id)
+      if (!group) {
+        throw new Error(`未知分组: ${item.id}`)
+      }
+      return { ...group, parent_id: item.parent_id }
+    })
+    groups.value = next
+
+    try {
+      await api.reorderGroups(items)
+    } catch (e) {
+      groups.value = prev
+      throw e
+    }
+  }
+
   async function startGroup(groupId: string) {
     await api.startGroup(groupId)
   }
@@ -118,6 +144,7 @@ export const useGroupStore = defineStore('group', () => {
     createGroup,
     updateGroup,
     deleteGroup,
+    reorderGroups,
     startGroup,
     stopGroup,
     selectGroup,

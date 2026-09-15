@@ -103,6 +103,13 @@ impl Group {
     }
 }
 
+/// Payload for `reorder_groups`: full group list in desired display order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupReorderItem {
+    pub id: String,
+    pub parent_id: Option<String>,
+}
+
 // ─── Tunnel Status ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

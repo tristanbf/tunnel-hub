@@ -5,6 +5,7 @@ import type {
   TunnelStatus,
   TunnelState,
   Group,
+  GroupReorderItem,
   AppConfig,
   LogEntry,
   TunnelStatusEvent,
@@ -79,6 +80,10 @@ export async function updateGroup(group: Group): Promise<void> {
 
 export async function deleteGroup(id: string): Promise<void> {
   return invoke('delete_group', { id })
+}
+
+export async function reorderGroups(items: GroupReorderItem[]): Promise<void> {
+  return invoke('reorder_groups', { items })
 }
 
 export async function assignTunnelToGroup(tunnelId: string, groupId: string | null): Promise<void> {

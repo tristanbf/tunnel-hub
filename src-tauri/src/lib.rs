@@ -51,6 +51,7 @@ pub fn run() {
             commands::create_group,
             commands::update_group,
             commands::delete_group,
+            commands::reorder_groups,
             commands::assign_tunnel_to_group,
             commands::start_group,
             commands::stop_group,
