@@ -1,6 +1,6 @@
 {
   "productName": "TunnelHub",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "identifier": "com.zeptools.tunnelhub",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,11 +12,11 @@
     "windows": [
       {
         "title": "TunnelHub",
-        "width": 1100,
+        "width": 1280,
         "height": 720,
         "resizable": true,
         "fullscreen": false,
-        "minWidth": 800,
+        "minWidth": 1260,
         "minHeight": 600
       }
     ],
